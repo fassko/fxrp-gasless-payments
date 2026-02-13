@@ -19,7 +19,7 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": [
-    "client/**/*.ts",
+    "utils/**/*.ts",
     "relayer/**/*.ts",
     "scripts/**/*.ts",
     "lib/**/*.ts",

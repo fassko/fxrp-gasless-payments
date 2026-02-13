@@ -1,11 +1,11 @@
 /**
- * FXRP Gasless Payment Client - Signer Utilities
+ * FXRP Gasless Payment Utilities
  *
  * This module provides utilities for users to sign gasless payment requests
  * using EIP-712 typed data signatures.
  *
  * Usage:
- *   import { signPaymentRequest, createPaymentRequest } from './client/signer';
+ *   import { signPaymentRequest, createPaymentRequest } from './utils/payment';
  *
  *   // Create and sign a payment request
  *   const request = await createPaymentRequest(

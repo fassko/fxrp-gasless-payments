@@ -21,7 +21,7 @@ import {
   createPaymentRequest,
   approveFXRP,
   checkUserStatus,
-} from "../client/signer";
+} from "../utils/payment";
 import "dotenv/config";
 
 // Configuration

@@ -18,8 +18,8 @@ The FXRP token address is resolved dynamically from the Flare Contract Registry 
 ```
 ├── contracts/
 │   └── GaslessPaymentForwarder.sol   # Main contract
-├── client/
-│   └── signer.ts                     # Client utilities for signing
+├── utils/
+│   └── payment.ts                    # Payment utilities (signing, approve, status)
 ├── relayer/
 │   └── index.ts                      # Relayer HTTP service
 ├── scripts/
@@ -99,7 +99,7 @@ Endpoints:
 Users must approve the forwarder contract to spend their FXRP once:
 
 ```typescript
-import { approveFXRP } from "./client/signer";
+import { approveFXRP } from "./utils/payment";
 
 await approveFXRP(wallet, forwarderAddress);
 ```
@@ -107,7 +107,7 @@ await approveFXRP(wallet, forwarderAddress);
 #### Create & Sign Payment Request
 
 ```typescript
-import { createPaymentRequest } from "./client/signer";
+import { createPaymentRequest } from "./utils/payment";
 
 const request = await createPaymentRequest(
   wallet,
@@ -137,9 +137,9 @@ npm run example
 
 This runs the full flow: check status, approve (if needed), create payment, submit to relayer.
 
-## Client API
+## Payment Utilities API
 
-From `client/signer.ts`:
+From `utils/payment.ts`:
 
 | Function | Description |
 |----------|-------------|
