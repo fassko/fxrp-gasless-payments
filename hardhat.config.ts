@@ -37,6 +37,11 @@ const config: HardhatUserConfig = {
       chainId: 19,
       accounts: [PRIVATE_KEY],
     },
+    coston: {
+      url: "https://coston-api.flare.network/ext/C/rpc",
+      chainId: 1024,
+      accounts: [PRIVATE_KEY],
+    }
   },
   paths: {
     sources: "./contracts",
@@ -54,6 +59,30 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: "https://coston2-explorer.flare.network/api",
           browserURL: "https://coston2-explorer.flare.network",
+        },
+      },
+      {
+        network: "coston",
+        chainId: 1024,
+        urls: {
+          apiURL: "https://coston-explorer.flare.network/api",
+          browserURL: "https://coston-explorer.flare.network",
+        },
+      },
+      {
+        network: "songbird",
+        chainId: 19,
+        urls: {
+          apiURL: "https://songbird-explorer.flare.network/api",
+          browserURL: "https://songbird-explorer.flare.network",
+        },
+      },
+      {
+        network: "flare",
+        chainId: 14,
+        urls: {
+          apiURL: "https://flare-explorer.flare.network/api",
+          browserURL: "https://flare-explorer.flare.network",
         },
       },
     ],
