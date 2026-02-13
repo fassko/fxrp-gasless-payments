@@ -13,6 +13,12 @@ This project enables users to transfer FXRP without holding FLR for gas. Instead
 
 The FXRP token address is resolved dynamically from the Flare Contract Registry via `ContractRegistry.getAssetManagerFXRP() -> AssetManager.fAsset()`.
 
+### EIP-3009: Transfer with Authorization
+
+[EIP-3009](https://eips.ethereum.org/EIPS/eip-3009) extends the ERC-20 token standard to include support for meta-transactions. It allows a token holder to sign an authorization message off-chain, which can then be relayed by another account (the relayer) to execute the transfer on-chain. The relayer pays the gas fees for this on-chain execution.
+
+This project implements a similar pattern for FXRP: users sign payment requests off-chain with [EIP-712](https://eips.ethereum.org/EIPS/eip-712), and a relayer submits the signed request to the `GaslessPaymentForwarder` contract, which verifies the signature and performs the FXRP transfer. The relayer pays gas and can charge a fee in FXRP.
+
 ## Project Structure
 
 ```

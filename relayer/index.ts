@@ -15,8 +15,8 @@
 
 import { ethers, Contract, Wallet, JsonRpcProvider } from "ethers";
 import { erc20Abi, recoverTypedDataAddress, type TypedDataDomain, type TypedData } from "viem";
-import Fastify from "fastify";
-import cors from "@fastify/cors";
+import express, { Request, Response } from "express";
+import cors from "cors";
 import "dotenv/config";
 import type { GaslessPaymentForwarder } from "../typechain-types/contracts/GaslessPaymentForwarder";
 import { GaslessPaymentForwarder__factory } from "../typechain-types/factories/contracts/GaslessPaymentForwarder__factory";
@@ -433,63 +433,75 @@ export class GaslessRelayer {
   }
 }
 
-// Fastify server for receiving payment requests
+// Express server for receiving payment requests
 async function startServer(
   relayer: GaslessRelayer,
   port: number = 3000
 ): Promise<void> {
-  const app = Fastify();
-  await app.register(cors);
+  const app = express();
+  app.use(cors());
+  app.use(express.json());
 
   // Get nonce for an address
-  app.get<{ Params: { addr: string } }>("/nonce/:addr", async (req) => {
-    const nonce = await relayer.getNonce(req.params.addr);
-    return { nonce: nonce.toString() };
+  app.get("/nonce/:addr", async (req: Request<{ addr: string }>, res: Response) => {
+    try {
+      const nonce = await relayer.getNonce(req.params.addr);
+      res.json({ nonce: nonce.toString() });
+    } catch (error) {
+      const err = error as Error;
+      res.status(400).json({ error: err.message });
+    }
   });
 
   // Get relayer fee
-  app.get("/fee", async () => {
-    const [fee, decimals] = await Promise.all([
-      relayer.getRelayerFee(),
-      relayer.getTokenDecimals(),
-    ]);
-    return {
-      fee: fee.toString(),
-      feeFormatted: ethers.formatUnits(fee, decimals) + " FXRP",
-    };
+  app.get("/fee", async (_req: Request, res: Response) => {
+    try {
+      const [fee, decimals] = await Promise.all([
+        relayer.getRelayerFee(),
+        relayer.getTokenDecimals(),
+      ]);
+      res.json({
+        fee: fee.toString(),
+        feeFormatted: ethers.formatUnits(fee, decimals) + " FXRP",
+      });
+    } catch (error) {
+      const err = error as Error;
+      res.status(400).json({ error: err.message });
+    }
   });
 
   // Execute payment
-  app.post<{ Body: PaymentRequest }>("/execute", async (req, reply) => {
+  app.post("/execute", async (req: Request, res: Response) => {
     try {
-      return await relayer.executePayment(req.body);
+      const result = await relayer.executePayment(req.body);
+      res.json(result);
     } catch (error) {
       const err = error as Error;
       console.error("Payment execution failed:", err.message);
-      reply.code(400);
-      return { error: err.message };
+      res.status(400).json({ error: err.message });
     }
   });
 
   // Execute batch payments
-  app.post<{ Body: PaymentRequest[] }>("/execute-batch", async (req, reply) => {
+  app.post("/execute-batch", async (req: Request, res: Response) => {
     try {
-      return await relayer.executeBatchPayments(req.body);
+      const result = await relayer.executeBatchPayments(req.body);
+      res.json(result);
     } catch (error) {
       const err = error as Error;
       console.error("Batch execution failed:", err.message);
-      reply.code(400);
-      return { error: err.message };
+      res.status(400).json({ error: err.message });
     }
   });
 
-  await app.listen({ port });
-  console.log(`\nRelayer server running on http://localhost:${port}`);
-  console.log(`\nEndpoints:`);
-  console.log(`  GET  /nonce/:addr   - Get nonce for address`);
-  console.log(`  GET  /fee           - Get relayer fee`);
-  console.log(`  POST /execute       - Execute single payment`);
-  console.log(`  POST /execute-batch - Execute batch payments`);
+  app.listen(port, () => {
+    console.log(`\nRelayer server running on http://localhost:${port}`);
+    console.log(`\nEndpoints:`);
+    console.log(`  GET  /nonce/:addr   - Get nonce for address`);
+    console.log(`  GET  /fee           - Get relayer fee`);
+    console.log(`  POST /execute       - Execute single payment`);
+    console.log(`  POST /execute-batch - Execute batch payments`);
+  });
 }
 
 // Main entry point
