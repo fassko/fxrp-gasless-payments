@@ -15,7 +15,8 @@
 
 import { ethers, Contract, Wallet, JsonRpcProvider } from "ethers";
 import { erc20Abi, recoverTypedDataAddress, type TypedDataDomain, type TypedData } from "viem";
-import http, { IncomingMessage, ServerResponse } from "http";
+import Fastify from "fastify";
+import cors from "@fastify/cors";
 import "dotenv/config";
 import type { GaslessPaymentForwarder } from "../typechain-types/contracts/GaslessPaymentForwarder";
 import { GaslessPaymentForwarder__factory } from "../typechain-types/factories/contracts/GaslessPaymentForwarder__factory";
@@ -432,108 +433,63 @@ export class GaslessRelayer {
   }
 }
 
-// Simple HTTP server for receiving payment requests
+// Fastify server for receiving payment requests
 async function startServer(
   relayer: GaslessRelayer,
   port: number = 3000
 ): Promise<void> {
-  const server = http.createServer(
-    async (req: IncomingMessage, res: ServerResponse) => {
-      // CORS headers
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  const app = Fastify();
+  await app.register(cors);
 
-      if (req.method === "OPTIONS") {
-        res.writeHead(200);
-        res.end();
-        return;
-      }
-
-      // Get nonce for an address
-      if (req.method === "GET" && req.url?.startsWith("/nonce/")) {
-        const address = req.url.split("/nonce/")[1];
-        try {
-          const nonce = await relayer.getNonce(address);
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ nonce: nonce.toString() }));
-        } catch (error) {
-          const err = error as Error;
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: err.message }));
-        }
-        return;
-      }
-
-      // Get relayer fee
-      if (req.method === "GET" && req.url === "/fee") {
-        const [fee, decimals] = await Promise.all([
-          relayer.getRelayerFee(),
-          relayer.getTokenDecimals(),
-        ]);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(
-          JSON.stringify({
-            fee: fee.toString(),
-            feeFormatted: ethers.formatUnits(fee, decimals) + " FXRP",
-          })
-        );
-        return;
-      }
-
-      // Execute payment
-      if (req.method === "POST" && req.url?.split("?")[0] === "/execute") {
-        let body = "";
-        req.on("data", (chunk: Buffer) => (body += chunk));
-        req.on("end", async () => {
-          try {
-            const request: PaymentRequest = JSON.parse(body);
-            const result = await relayer.executePayment(request);
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(result));
-          } catch (error) {
-            const err = error as Error;
-            console.error("Payment execution failed:", err.message);
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: err.message }));
-          }
-        });
-        return;
-      }
-
-      // Execute batch payments
-      if (req.method === "POST" && req.url === "/execute-batch") {
-        let body = "";
-        req.on("data", (chunk: Buffer) => (body += chunk));
-        req.on("end", async () => {
-          try {
-            const requests: PaymentRequest[] = JSON.parse(body);
-            const result = await relayer.executeBatchPayments(requests);
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(result));
-          } catch (error) {
-            const err = error as Error;
-            console.error("Batch execution failed:", err.message);
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: err.message }));
-          }
-        });
-        return;
-      }
-
-      res.writeHead(404);
-      res.end("Not found");
-    }
-  );
-
-  server.listen(port, () => {
-    console.log(`\nRelayer server running on http://localhost:${port}`);
-    console.log(`\nEndpoints:`);
-    console.log(`  GET  /nonce/:addr   - Get nonce for address`);
-    console.log(`  GET  /fee           - Get relayer fee`);
-    console.log(`  POST /execute       - Execute single payment`);
-    console.log(`  POST /execute-batch - Execute batch payments`);
+  // Get nonce for an address
+  app.get<{ Params: { addr: string } }>("/nonce/:addr", async (req) => {
+    const nonce = await relayer.getNonce(req.params.addr);
+    return { nonce: nonce.toString() };
   });
+
+  // Get relayer fee
+  app.get("/fee", async () => {
+    const [fee, decimals] = await Promise.all([
+      relayer.getRelayerFee(),
+      relayer.getTokenDecimals(),
+    ]);
+    return {
+      fee: fee.toString(),
+      feeFormatted: ethers.formatUnits(fee, decimals) + " FXRP",
+    };
+  });
+
+  // Execute payment
+  app.post<{ Body: PaymentRequest }>("/execute", async (req, reply) => {
+    try {
+      return await relayer.executePayment(req.body);
+    } catch (error) {
+      const err = error as Error;
+      console.error("Payment execution failed:", err.message);
+      reply.code(400);
+      return { error: err.message };
+    }
+  });
+
+  // Execute batch payments
+  app.post<{ Body: PaymentRequest[] }>("/execute-batch", async (req, reply) => {
+    try {
+      return await relayer.executeBatchPayments(req.body);
+    } catch (error) {
+      const err = error as Error;
+      console.error("Batch execution failed:", err.message);
+      reply.code(400);
+      return { error: err.message };
+    }
+  });
+
+  await app.listen({ port });
+  console.log(`\nRelayer server running on http://localhost:${port}`);
+  console.log(`\nEndpoints:`);
+  console.log(`  GET  /nonce/:addr   - Get nonce for address`);
+  console.log(`  GET  /fee           - Get relayer fee`);
+  console.log(`  POST /execute       - Execute single payment`);
+  console.log(`  POST /execute-batch - Execute batch payments`);
 }
 
 // Main entry point
@@ -572,7 +528,5 @@ async function main(): Promise<void> {
   await startServer(relayer, port);
 }
 
-// Run if executed directly
-if (require.main === module) {
-  main().catch(console.error);
-}
+// Run the server
+main().catch(console.error);

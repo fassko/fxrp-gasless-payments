@@ -32,9 +32,11 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
     "@openzeppelin/contracts": "^5.4.0",
     "dotenv": "^17.2.3",
     "ethers": "^6.16.0",
+    "fastify": "^5.7.4",
     "viem": "^2.21.0"
   }
 }
