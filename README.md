@@ -17,7 +17,7 @@ The FXRP token address is resolved dynamically from the Flare Contract Registry 
 
 [EIP-3009](https://eips.ethereum.org/EIPS/eip-3009) extends the ERC-20 token standard to include support for meta-transactions. It allows a token holder to sign an authorization message off-chain, which can then be relayed by another account (the relayer) to execute the transfer on-chain. The relayer pays the gas fees for this on-chain execution.
 
-This project implements a similar pattern for FXRP: users sign payment requests off-chain with [EIP-712](https://eips.ethereum.org/EIPS/eip-712), and a relayer submits the signed request to the `GaslessPaymentForwarder` contract, which verifies the signature and performs the FXRP transfer. The relayer pays gas and can charge a fee in FXRP.
+This project implements a similar pattern for FXRP: users sign payment requests off-chain with [EIP-712](https://eips.ethereum.org/EIPS/eip-712), and a relayer submits the signed request to the `GaslessPaymentForwarder` contract, which verifies the signature and performs the FXRP transfer. The relayer pays gas on behalf of users.
 
 ## Project Structure
 
@@ -57,7 +57,7 @@ cp .env.example .env
 | Variable | Description |
 |----------|-------------|
 | `PRIVATE_KEY` | Deployer private key (for deployment) |
-| `RELAYER_PRIVATE_KEY` | Relayer wallet (pays gas, receives FXRP fees) |
+| `RELAYER_PRIVATE_KEY` | Relayer wallet (pays gas) |
 | `USER_PRIVATE_KEY` | User wallet for testing |
 | `FORWARDER_ADDRESS` | Deployed contract address (set after deploy) |
 | `RPC_URL` | Flare network RPC (default: Coston2) |
@@ -94,7 +94,6 @@ Endpoints:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/nonce/:address` | Get nonce for address |
-| GET | `/fee` | Get relayer fee |
 | POST | `/execute` | Execute single payment |
 
 ### 4. User Flow
@@ -118,8 +117,7 @@ const request = await createPaymentRequest(
   wallet,
   forwarderAddress,
   recipientAddress,
-  "1.5",   // amount in FXRP
-  "0.01"   // fee in FXRP (optional, uses contract default if null)
+  "1.5"    // amount in FXRP
 );
 ```
 
@@ -150,8 +148,7 @@ From `utils/payment.ts`:
 |----------|-------------|
 | `getTokenDecimals(provider, forwarderAddress)` | Get FXRP decimals |
 | `getNonce(provider, forwarderAddress, userAddress)` | Get user nonce |
-| `getRelayerFee(provider, forwarderAddress)` | Get minimum fee |
-| `createPaymentRequest(wallet, forwarderAddress, to, amount, fee?, deadline?)` | Create & sign payment |
+| `createPaymentRequest(wallet, forwarderAddress, to, amount, deadline?)` | Create & sign payment |
 | `approveFXRP(wallet, forwarderAddress, amount?)` | Approve forwarder to spend FXRP |
 | `checkUserStatus(provider, forwarderAddress, userAddress)` | Balance, allowance, nonce |
 
@@ -160,13 +157,11 @@ From `utils/payment.ts`:
 ### GaslessPaymentForwarder
 
 - `fxrp()` – Returns FXRP token address (from Flare Contract Registry)
-- `executePayment(from, to, amount, fee, deadline, signature)` – Execute payment
+- `executePayment(from, to, amount, deadline, signature)` – Execute payment
 - `getNonce(account)` – Get nonce for replay protection
-- `relayerFee()` – Minimum relayer fee in FXRP base units
 
 ### Owner Functions
 
-- `setRelayerFee(fee)` – Update minimum fee
 - `setRelayerAuthorization(relayer, authorized)` – Authorize relayers
 
 ## License

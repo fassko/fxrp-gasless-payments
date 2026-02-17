@@ -28,7 +28,6 @@ export const PAYMENT_REQUEST_TYPES = {
     { name: "from", type: "address" as const },
     { name: "to", type: "address" as const },
     { name: "amount", type: "uint256" as const },
-    { name: "fee", type: "uint256" as const },
     { name: "nonce", type: "uint256" as const },
     { name: "deadline", type: "uint256" as const },
   ],
@@ -39,7 +38,6 @@ export interface SignPaymentParams {
   forwarderAddress: string;
   to: string;
   amount: bigint;
-  fee: bigint;
   nonce: bigint;
   deadline: number;
   chainId: bigint;
@@ -49,12 +47,10 @@ export interface PaymentRequest {
   from: string;
   to: string;
   amount: string;
-  fee: string;
   deadline: number;
   signature: string;
   meta: {
     amountFormatted: string;
-    feeFormatted: string;
     nonce: string;
     chainId: string;
   };
@@ -108,22 +104,12 @@ export async function getNonce(
   return await forwarder.getNonce(userAddress);
 }
 
-// 7. Get the minimum relayer fee from the forwarder contract
-export async function getRelayerFee(
-  provider: Provider,
-  forwarderAddress: string
-): Promise<bigint> {
-  const forwarder = GaslessPaymentForwarder__factory.connect(forwarderAddress, provider);
-  return await forwarder.relayerFee();
-}
-
-// 8. Sign a payment request using EIP-712
+// 7. Sign a payment request using EIP-712
 export async function signPaymentRequest(
   wallet: Wallet,
   params: SignPaymentParams
 ): Promise<string> {
-  const { forwarderAddress, to, amount, fee, nonce, deadline, chainId } =
-    params;
+  const { forwarderAddress, to, amount, nonce, deadline, chainId } = params;
 
   // Build the EIP-712 domain
   const domain = {
@@ -137,7 +123,6 @@ export async function signPaymentRequest(
     from: wallet.address,
     to: to,
     amount: amount,
-    fee: fee,
     nonce: nonce,
     deadline: deadline,
   };
@@ -152,13 +137,12 @@ export async function signPaymentRequest(
   return signature;
 }
 
-// 9. Create a complete payment request ready for submission to a relayer
+// 8. Create a complete payment request ready for submission to a relayer
 export async function createPaymentRequest(
   wallet: Wallet,
   forwarderAddress: string,
   to: string,
   amount: string | number,
-  fee: string | number | null = null,
   deadlineSeconds: number = DEFAULT_DEADLINE_SECONDS
 ): Promise<PaymentRequest> {
   const provider = wallet.provider;
@@ -176,14 +160,6 @@ export async function createPaymentRequest(
   // Get current nonce
   const nonce = await getNonce(provider, forwarderAddress, wallet.address);
 
-  // Get fee (use provided or contract default)
-  let feeDrops: bigint;
-  if (fee !== null) {
-    feeDrops = parseAmount(fee, decimals);
-  } else {
-    feeDrops = await getRelayerFee(provider, forwarderAddress);
-  }
-
   // Use chain block timestamp for deadline (avoids clock skew vs contract's block.timestamp)
   const block = await provider.getBlock("latest");
   const chainTime = block?.timestamp ?? Math.floor(Date.now() / 1000);
@@ -197,7 +173,6 @@ export async function createPaymentRequest(
     forwarderAddress,
     to,
     amount: amountDrops,
-    fee: feeDrops,
     nonce,
     deadline,
     chainId,
@@ -207,20 +182,18 @@ export async function createPaymentRequest(
     from: wallet.address,
     to: to,
     amount: amountDrops.toString(),
-    fee: feeDrops.toString(),
     deadline: deadline,
     signature: signature,
     // Metadata (not part of signature)
     meta: {
       amountFormatted: formatAmount(amountDrops, decimals) + " FXRP",
-      feeFormatted: formatAmount(feeDrops, decimals) + " FXRP",
       nonce: nonce.toString(),
       chainId: chainId.toString(),
     },
   };
 }
 
-// 10. Approve the forwarder contract to spend FXRP (one-time per user)
+// 9. Approve the forwarder contract to spend FXRP (one-time per user)
 export async function approveFXRP(
   wallet: Wallet,
   forwarderAddress: string,
@@ -248,7 +221,7 @@ export async function approveFXRP(
   };
 }
 
-// 11. Check user's FXRP balance and allowance
+// 10. Check user's FXRP balance and allowance
 export async function checkUserStatus(
   provider: Provider,
   forwarderAddress: string,
