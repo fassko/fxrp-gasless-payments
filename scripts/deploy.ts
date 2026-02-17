@@ -1,24 +1,23 @@
 /**
  * Deploy the GaslessPaymentForwarder contract
- * 
+ *
  * Usage: npm run deploy:coston2
  */
 
+// 1. Import the necessary libraries
 import hre from "hardhat";
 import { erc20Abi } from "viem";
 import type { GaslessPaymentForwarder } from "../typechain-types/contracts/GaslessPaymentForwarder";
 import type { IERC20Metadata } from "../typechain-types/@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata";
 
-/**
- * Default relayer fee in FXRP token base units (format depends on token decimals)
- */
+// 2. Define the default relayer fee (FXRP token base units)
 const DEFAULT_RELAYER_FEE = 10000n;
 
 async function main(): Promise<string> {
   const network = hre.network.name;
   console.log(`\nDeploying GaslessPaymentForwarder to ${network}...`);
 
-  // Get deployer account
+  // 3. Get deployer account and balance
   const [deployer] = await hre.ethers.getSigners();
   console.log(`Deployer address: ${deployer.address}`);
 
@@ -31,7 +30,7 @@ async function main(): Promise<string> {
   );
   console.log(`Relayer fee: ${DEFAULT_RELAYER_FEE} (base units)`);
 
-  // Deploy the contract - no FXRP address needed, it's fetched from registry
+  // 4. Deploy the GaslessPaymentForwarder contract (FXRP fetched from registry)
   const GaslessPaymentForwarder = await hre.ethers.getContractFactory(
     "GaslessPaymentForwarder"
   );
@@ -42,7 +41,7 @@ async function main(): Promise<string> {
   await forwarder.waitForDeployment();
   const forwarderAddress = await forwarder.getAddress();
 
-  // Get FXRP token address from forwarder (for display)
+  // 5. Get FXRP token address from forwarder (for display)
   const fxrpAddress = await forwarder.fxrp();
   const fxrp = new hre.ethers.Contract(
     fxrpAddress,
@@ -60,7 +59,7 @@ async function main(): Promise<string> {
   console.log(`Owner: ${deployer.address}`);
   console.log(`Relayer Fee: ${relayerFeeFormatted} FXRP (${DEFAULT_RELAYER_FEE} base units)`);
 
-  // Verify contract on block explorer
+  // 6. Verify contract on block explorer
   console.log("\nVerifying contract...");
   try {
     await hre.run("verify:verify", {
@@ -83,6 +82,7 @@ async function main(): Promise<string> {
   return forwarderAddress;
 }
 
+// 7. Main entry point for the deployment script
 main()
   .then(() => process.exit(0))
   .catch((error) => {

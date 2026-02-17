@@ -16,6 +16,7 @@
  * Usage: npm run example
  */
 
+// 1. Import the necessary libraries
 import { Wallet, JsonRpcProvider } from "ethers";
 import {
   createPaymentRequest,
@@ -24,12 +25,13 @@ import {
 } from "../utils/payment";
 import "dotenv/config";
 
-// Configuration
+// 2. Configuration from environment
 const RPC_URL = process.env.RPC_URL;
 const RELAYER_URL = process.env.RELAYER_URL;
 const FORWARDER_ADDRESS = process.env.FORWARDER_ADDRESS;
 const USER_PRIVATE_KEY = process.env.USER_PRIVATE_KEY;
 
+// Relayer /execute API response type
 interface RelayerResponse {
   success?: boolean;
   transactionHash?: string;
@@ -41,7 +43,7 @@ interface RelayerResponse {
 async function main(): Promise<void> {
   console.log("=== FXRP Gasless Payment Example ===\n");
 
-  // Validate configuration
+  // 3. Validate configuration
   if (!FORWARDER_ADDRESS) {
     console.error("Error: FORWARDER_ADDRESS not set in environment");
     process.exit(1);
@@ -51,7 +53,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Setup provider and wallet
+  // 4. Setup provider and wallet
   const provider = new JsonRpcProvider(RPC_URL);
   const wallet = new Wallet(USER_PRIVATE_KEY, provider);
 
@@ -59,7 +61,7 @@ async function main(): Promise<void> {
   console.log(`Forwarder: ${FORWARDER_ADDRESS}`);
   console.log(`Relayer: ${RELAYER_URL}\n`);
 
-  // Step 1: Check user status
+  // 5. Check user FXRP balance and allowance
   console.log("Step 1: Checking FXRP balance and allowance...");
   const status = await checkUserStatus(
     provider,
@@ -72,7 +74,7 @@ async function main(): Promise<void> {
   console.log(`  Allowance: ${status.allowanceFormatted}`);
   console.log(`  Nonce: ${status.nonce}`);
 
-  // Step 2: Approve if needed
+  // 6. Approve FXRP for forwarder (if needed)
   if (status.needsApproval) {
     console.log("\nStep 2: Approving FXRP for gasless payments...");
     const approvalResult = await approveFXRP(wallet, FORWARDER_ADDRESS);
@@ -81,7 +83,7 @@ async function main(): Promise<void> {
     console.log("\nStep 2: Already approved, skipping...");
   }
 
-  // Step 3: Create a payment request
+  // 7. Create and sign the payment request
   const recipientAddress =
     process.env.RECIPIENT_ADDRESS ||
     "0x0000000000000000000000000000000000000001";
@@ -111,7 +113,7 @@ async function main(): Promise<void> {
   );
   console.log(`    Signature: ${paymentRequest.signature.slice(0, 20)}...`);
 
-  // Step 4: Submit to relayer
+  // 8. Submit the payment request to the relayer
   console.log(`\nStep 4: Submitting to relayer...`);
 
   try {
@@ -142,5 +144,5 @@ async function main(): Promise<void> {
   }
 }
 
-// Run the example
+// 9. Main entry point for the example usage script
 main().catch(console.error);

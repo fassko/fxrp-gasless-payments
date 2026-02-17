@@ -96,7 +96,6 @@ Endpoints:
 | GET | `/nonce/:address` | Get nonce for address |
 | GET | `/fee` | Get relayer fee |
 | POST | `/execute` | Execute single payment |
-| POST | `/execute-batch` | Execute batch payments |
 
 ### 4. User Flow
 
@@ -161,8 +160,7 @@ From `utils/payment.ts`:
 ### GaslessPaymentForwarder
 
 - `fxrp()` – Returns FXRP token address (from Flare Contract Registry)
-- `executePayment(from, to, amount, fee, deadline, signature)` – Execute single payment
-- `executeBatchPayments(requests[])` – Execute multiple payments
+- `executePayment(from, to, amount, fee, deadline, signature)` – Execute payment
 - `getNonce(account)` – Get nonce for replay protection
 - `relayerFee()` – Minimum relayer fee in FXRP base units
 

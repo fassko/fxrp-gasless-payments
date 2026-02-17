@@ -4,28 +4,14 @@
  * This module provides utilities for users to sign gasless payment requests
  * using EIP-712 typed data signatures.
  *
- * Usage:
- *   import { signPaymentRequest, createPaymentRequest } from './utils/payment';
- *
- *   // Create and sign a payment request
- *   const request = await createPaymentRequest(
- *     wallet,           // ethers.Wallet instance
- *     forwarderAddress, // GaslessPaymentForwarder contract address
- *     recipientAddress, // Where to send FXRP
- *     "1.5",            // Amount in FXRP (human readable)
- *     "0.01"            // Fee in FXRP (human readable)
- *   );
- *
- *   // Send to relayer
- *   await fetch('http://relayer:3000/execute', {
- *     method: 'POST',
- *     body: JSON.stringify(request)
- *   });
  */
 
+// 1. Import the necessary libraries
 import { ethers, Contract, Wallet, Provider } from "ethers";
 import { erc20Abi, type TypedDataDomain, type TypedData } from "viem";
 import { GaslessPaymentForwarder__factory } from "../typechain-types/factories/contracts/GaslessPaymentForwarder__factory";
+
+// 2. Define the default deadline, EIP-712 domain and types
 
 // Default deadline: 30 minutes from now
 const DEFAULT_DEADLINE_SECONDS = 30 * 60;
@@ -91,23 +77,17 @@ export interface UserStatus {
   needsApproval: boolean;
 }
 
-/**
- * Parse amount from human-readable string using token decimals
- */
+// 3. Parse amount from human-readable string using token decimals
 export function parseAmount(amount: string | number, decimals: number): bigint {
   return ethers.parseUnits(amount.toString(), decimals);
 }
 
-/**
- * Format amount from raw units to human-readable string
- */
+// 4. Format amount from raw units to human-readable string
 export function formatAmount(drops: bigint | string, decimals: number): string {
   return ethers.formatUnits(drops, decimals);
 }
 
-/**
- * Get FXRP token decimals from the forwarder contract
- */
+// 5. Get FXRP token decimals from the forwarder contract using the provider
 export async function getTokenDecimals(
   provider: Provider,
   forwarderAddress: string
@@ -118,9 +98,7 @@ export async function getTokenDecimals(
   return (await fxrp.decimals()) as number;
 }
 
-/**
- * Get the current nonce for a user from the forwarder contract
- */
+// 6. Get the current nonce for a user from the forwarder contract
 export async function getNonce(
   provider: Provider,
   forwarderAddress: string,
@@ -130,9 +108,7 @@ export async function getNonce(
   return await forwarder.getNonce(userAddress);
 }
 
-/**
- * Get the minimum relayer fee from the contract
- */
+// 7. Get the minimum relayer fee from the forwarder contract
 export async function getRelayerFee(
   provider: Provider,
   forwarderAddress: string
@@ -141,9 +117,7 @@ export async function getRelayerFee(
   return await forwarder.relayerFee();
 }
 
-/**
- * Sign a payment request using EIP-712
- */
+// 8. Sign a payment request using EIP-712
 export async function signPaymentRequest(
   wallet: Wallet,
   params: SignPaymentParams
@@ -178,9 +152,7 @@ export async function signPaymentRequest(
   return signature;
 }
 
-/**
- * Create a complete payment request ready for submission to a relayer
- */
+// 9. Create a complete payment request ready for submission to a relayer
 export async function createPaymentRequest(
   wallet: Wallet,
   forwarderAddress: string,
@@ -248,10 +220,7 @@ export async function createPaymentRequest(
   };
 }
 
-/**
- * Approve the forwarder contract to spend FXRP
- * This is a one-time operation per user
- */
+// 10. Approve the forwarder contract to spend FXRP (one-time per user)
 export async function approveFXRP(
   wallet: Wallet,
   forwarderAddress: string,
@@ -279,9 +248,7 @@ export async function approveFXRP(
   };
 }
 
-/**
- * Check user's FXRP balance and allowance
- */
+// 11. Check user's FXRP balance and allowance
 export async function checkUserStatus(
   provider: Provider,
   forwarderAddress: string,

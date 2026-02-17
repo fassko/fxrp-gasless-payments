@@ -13,6 +13,7 @@
  *   RPC_URL - Flare network RPC URL (optional, defaults to Coston2 testnet)
  */
 
+// 1. Import the necessary libraries
 import { ethers, Contract, Wallet, JsonRpcProvider } from "ethers";
 import { erc20Abi, recoverTypedDataAddress, type TypedDataDomain, type TypedData } from "viem";
 import express, { Request, Response } from "express";
@@ -20,6 +21,8 @@ import cors from "cors";
 import "dotenv/config";
 import type { GaslessPaymentForwarder } from "../typechain-types/contracts/GaslessPaymentForwarder";
 import { GaslessPaymentForwarder__factory } from "../typechain-types/factories/contracts/GaslessPaymentForwarder__factory";
+
+// 2. Define the network configurations
 
 // EIP-712 domain and types (viem format, must match contract)
 const EIP712_DOMAIN: TypedDataDomain = {
@@ -54,7 +57,7 @@ const NETWORKS: Record<string, { rpc: string; chainId: number }> = {
   },
 };
 
-// Type definitions
+// 3. Define the type definitions
 export interface RelayerConfig {
   relayerPrivateKey: string;
   forwarderAddress: string;
@@ -77,10 +80,7 @@ export interface ExecuteResult {
   gasUsed: string;
 }
 
-export interface BatchExecuteResult extends ExecuteResult {
-  paymentsProcessed: number;
-}
-
+// 4. Define the GaslessRelayer class
 export class GaslessRelayer {
   private config: RelayerConfig;
   private provider: JsonRpcProvider;
@@ -106,9 +106,7 @@ export class GaslessRelayer {
     console.log(`  Forwarder contract: ${config.forwarderAddress}`);
   }
 
-  /**
-   * Execute a single gasless payment
-   */
+  // 5. Execute a single gasless payment using the forwarder contract
   async executePayment(request: PaymentRequest): Promise<ExecuteResult> {
     // Normalize and validate request format
     const from = ethers.getAddress(request.from);
@@ -230,7 +228,7 @@ export class GaslessRelayer {
         { gasLimit }
       );
     } catch (sendError) {
-      throw this.enrichRevertError(sendError, "sendTransaction");
+      throw sendError;
     }
 
     // Wait for confirmation
@@ -238,11 +236,7 @@ export class GaslessRelayer {
     try {
       receipt = await tx.wait();
     } catch (waitError) {
-      throw await this.enrichRevertErrorAsync(
-        waitError,
-        "transaction",
-        tx.hash
-      );
+      throw waitError;
     }
 
     return {
@@ -253,46 +247,7 @@ export class GaslessRelayer {
     };
   }
 
-  /**
-   * Execute multiple payments in a batch
-   */
-  async executeBatchPayments(
-    requests: PaymentRequest[]
-  ): Promise<BatchExecuteResult> {
-    // Validate all requests
-    for (const request of requests) {
-      await this.validateRequest(request);
-    }
-
-    // Format requests for the contract
-    const formattedRequests = requests.map((r) => ({
-      from: r.from,
-      to: r.to,
-      amount: r.amount,
-      fee: r.fee,
-      deadline: r.deadline,
-      signature: r.signature,
-    }));
-
-    // Execute batch
-    const tx = await this.forwarder.executeBatchPayments(formattedRequests, {
-      gasLimit: 100000n * BigInt(requests.length),
-    });
-
-    const receipt = await tx.wait();
-
-    return {
-      success: true,
-      transactionHash: tx.hash,
-      blockNumber: receipt?.blockNumber ?? null,
-      gasUsed: receipt?.gasUsed?.toString() ?? "0",
-      paymentsProcessed: requests.length,
-    };
-  }
-
-  /**
-   * Validate a payment request before submission
-   */
+  // 6. Validate a payment request before submission
   async validateRequest(request: PaymentRequest): Promise<void> {
     const { from, amount, fee, deadline } = request;
 
@@ -339,101 +294,31 @@ export class GaslessRelayer {
     }
   }
 
-  /**
-   * Decode revert reason from contract errors
-   */
-  private enrichRevertError(
-    err: unknown,
-    phase: string,
-    txHash?: string
-  ): Error {
-    const msg = this.parseRevertReason(err);
-    const hint =
-      txHash &&
-      ` Inspect tx: https://coston2-explorer.flare.network/tx/${txHash}`;
-    return new Error(`${phase} failed: ${msg}${hint || ""}`);
-  }
-
-  /**
-   * Async version: fetch failed tx from chain to diagnose empty-data issue
-   */
-  private async enrichRevertErrorAsync(
-    err: unknown,
-    phase: string,
-    txHash: string
-  ): Promise<Error> {
-    let msg = this.parseRevertReason(err);
-
-    // Fetch tx from chain to verify calldata
-    try {
-      const tx = await this.provider.getTransaction(txHash);
-      if (tx?.data === "0x" || tx?.data === undefined) {
-        msg += " [TX had no calldata - relayer bug]";
-      } else {
-        msg += ` [calldata length: ${tx?.data?.length ?? 0} chars]`;
-      }
-    } catch {
-      // Ignore fetch errors
-    }
-
-    const hint = ` Inspect tx: https://coston2-explorer.flare.network/tx/${txHash}`;
-    return new Error(`${phase} failed: ${msg}${hint}`);
-  }
-
-  private parseRevertReason(err: unknown): string {
-    const e = err as Error & {
-      data?: string;
-      revert?: { name: string };
-    };
-    let msg = e.message;
-
-    if (e.revert?.name) {
-      msg = `Contract reverted: ${e.revert.name}`;
-    } else if (e.data && typeof e.data === "string" && e.data.startsWith("0x")) {
-      try {
-        const iface = GaslessPaymentForwarder__factory.createInterface();
-        const parsed = iface.parseError(e.data);
-        if (parsed) msg = `Contract reverted: ${parsed.name}`;
-      } catch {
-        /* ignore */
-      }
-    }
-    return msg;
-  }
-
-  /**
-   * Get the current nonce for an address
-   */
+  // 7. Get the current nonce for an address
   async getNonce(address: string): Promise<bigint> {
     return await this.forwarder.getNonce(address);
   }
 
-  /**
-   * Get the minimum relayer fee
-   */
+  // 8. Get the minimum relayer fee
   async getRelayerFee(): Promise<bigint> {
     return await this.forwarder.relayerFee();
   }
 
-  /**
-   * Get FXRP token decimals
-   */
+  // 9. Get the FXRP token decimals
   async getTokenDecimals(): Promise<number> {
     const fxrpAddress: string = await this.forwarder.fxrp();
     const fxrp = new Contract(fxrpAddress, erc20Abi as ethers.InterfaceAbi, this.provider);
     return (await fxrp.decimals()) as number;
   }
 
-  /**
-   * Check relayer's FLR balance for gas
-   */
+  // 10. Check relayer's FLR balance for gas
   async getRelayerBalance(): Promise<string> {
     const balance = await this.provider.getBalance(this.wallet.address);
     return ethers.formatEther(balance);
   }
 }
 
-// Express server for receiving payment requests
+// 11. Express server for receiving payment requests
 async function startServer(
   relayer: GaslessRelayer,
   port: number = 3000
@@ -482,29 +367,16 @@ async function startServer(
     }
   });
 
-  // Execute batch payments
-  app.post("/execute-batch", async (req: Request, res: Response) => {
-    try {
-      const result = await relayer.executeBatchPayments(req.body);
-      res.json(result);
-    } catch (error) {
-      const err = error as Error;
-      console.error("Batch execution failed:", err.message);
-      res.status(400).json({ error: err.message });
-    }
-  });
-
   app.listen(port, () => {
     console.log(`\nRelayer server running on http://localhost:${port}`);
     console.log(`\nEndpoints:`);
     console.log(`  GET  /nonce/:addr   - Get nonce for address`);
     console.log(`  GET  /fee           - Get relayer fee`);
     console.log(`  POST /execute       - Execute single payment`);
-    console.log(`  POST /execute-batch - Execute batch payments`);
   });
 }
 
-// Main entry point
+// 12. Main entry point for the relayer server
 async function main(): Promise<void> {
   const relayerPrivateKey = process.env.RELAYER_PRIVATE_KEY;
   const forwarderAddress = process.env.FORWARDER_ADDRESS;
@@ -540,5 +412,5 @@ async function main(): Promise<void> {
   await startServer(relayer, port);
 }
 
-// Run the server
+// 13. Run the server
 main().catch(console.error);

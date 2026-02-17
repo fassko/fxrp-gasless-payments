@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
+// OpenZeppelin: SafeERC20, ECDSA, EIP712, Ownable, ReentrancyGuard
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
@@ -15,31 +16,22 @@ import {IFAsset} from "@flarenetwork/flare-periphery-contracts/flare/IFAsset.sol
 /**
  * @title GaslessPaymentForwarder
  * @notice Enables gasless FXRP transfers using EIP-712 signed meta-transactions
- * @dev Users sign payment requests off-chain, relayers submit them on-chain
+ * @dev Users sign payment requests off-chain, relayers submit them on-chain.
+ *      FXRP from Flare Contract Registry: getAssetManagerFXRP() -> fAsset().
  *
- * FXRP token (IFAsset) is fetched from Flare Contract Registry via:
- *   ContractRegistry.getAssetManagerFXRP() -> AssetManager.fAsset()
- *
- * Flow:
- * 1. User approves this contract to spend their FXRP (one-time)
- * 2. User signs a PaymentRequest off-chain
- * 3. Relayer submits the signed request via executePayment()
- * 4. Contract verifies signature and executes the FXRP transfer
+ * Flow: (1) User approves this contract to spend FXRP once.
+ *       (2) User signs PaymentRequest off-chain. (3) Relayer calls executePayment().
+ *       (4) Contract verifies signature and executes transfer.
  */
 contract GaslessPaymentForwarder is EIP712, Ownable, ReentrancyGuard {
+    // 1. Define the necessary libraries and contract variables
     using SafeERC20 for IFAsset;
     using ECDSA for bytes32;
 
-    // FXRP token (IFAsset) - resolved dynamically from Flare Contract Registry
+    mapping(address => uint256) public nonces;           // replay protection per sender
+    mapping(address => bool) public authorizedRelayers;  // relayer allowlist
 
-    // Nonces for replay protection
-    mapping(address => uint256) public nonces;
-
-    // Authorized relayers who can submit transactions
-    mapping(address => bool) public authorizedRelayers;
-
-    // Fee configuration (in FXRP token base units, see token decimals)
-    uint256 public relayerFee;
+    uint256 public relayerFee;  // default fee (owner-configurable)
 
     // EIP-712 type hash for PaymentRequest
     bytes32 public constant PAYMENT_REQUEST_TYPEHASH =
@@ -47,7 +39,7 @@ contract GaslessPaymentForwarder is EIP712, Ownable, ReentrancyGuard {
             "PaymentRequest(address from,address to,uint256 amount,uint256 fee,uint256 nonce,uint256 deadline)"
         );
 
-    // Events
+    // 2. Contract events
     event PaymentExecuted(
         address indexed from,
         address indexed to,
@@ -55,45 +47,31 @@ contract GaslessPaymentForwarder is EIP712, Ownable, ReentrancyGuard {
         uint256 fee,
         uint256 nonce
     );
-    event RelayerAuthorized(address indexed relayer, bool authorized);
-    event RelayerFeeUpdated(uint256 newFee);
+    event RelayerAuthorized(address indexed relayer, bool authorized);  // relayer allowlist changed
+    event RelayerFeeUpdated(uint256 newFee);  // default fee changed
 
-    // Custom errors
-    error InvalidSignature();
-    error ExpiredRequest();
-    error InvalidNonce();
-    error UnauthorizedRelayer();
-    error InsufficientAllowance();
-    error ZeroAddress();
+    // 3. Custom errors
+    error InvalidSignature();      // signer != from
+    error ExpiredRequest();        // block.timestamp > deadline
+    error InvalidNonce();           // nonce mismatch (replay)
+    error UnauthorizedRelayer();   // caller not in allowlist
+    error InsufficientAllowance();  // user approval < amount + fee
+    error ZeroAddress();           // zero address passed
 
-    /**
-     * @notice Constructor
-     * @param _relayerFee Initial relayer fee in FXRP token base units
-     */
+    // 4. Constructor that initializes the relayer fee
     constructor(
         uint256 _relayerFee
     ) EIP712("GaslessPaymentForwarder", "1") Ownable(msg.sender) {
-        relayerFee = _relayerFee;
+        relayerFee = _relayerFee;  // set initial default fee
     }
 
-    /**
-     * @notice Get FXRP (IFAsset) from Flare Contract Registry
-     * @return The FXRP token contract
-     */
+    // 5. Returns FXRP token from Flare Contract Registry
     function fxrp() public view returns (IFAsset) {
         IAssetManager assetManager = ContractRegistry.getAssetManagerFXRP();
-        return IFAsset(address(assetManager.fAsset()));
+        return IFAsset(address(assetManager.fAsset()));  // FXRP token from registry
     }
 
-    /**
-     * @notice Execute a gasless payment using a signed request
-     * @param from Sender's address
-     * @param to Recipient's address
-     * @param amount Amount of FXRP to transfer (excluding fee)
-     * @param fee Relayer fee in FXRP
-     * @param deadline Timestamp after which the request expires
-     * @param signature EIP-712 signature from the sender
-     */
+    // 6. Execute a gasless payment
     function executePayment(
         address from,
         address to,
@@ -102,13 +80,11 @@ contract GaslessPaymentForwarder is EIP712, Ownable, ReentrancyGuard {
         uint256 deadline,
         bytes calldata signature
     ) external nonReentrant {
-        // Validate deadline
-        if (block.timestamp > deadline) revert ExpiredRequest();
+        if (block.timestamp > deadline) revert ExpiredRequest();  // validate deadline
 
-        // Get current nonce
         uint256 currentNonce = nonces[from];
 
-        // Build the struct hash for EIP-712
+        // 7. Hash the payment request
         bytes32 structHash = keccak256(
             abi.encode(
                 PAYMENT_REQUEST_TYPEHASH,
@@ -121,120 +97,45 @@ contract GaslessPaymentForwarder is EIP712, Ownable, ReentrancyGuard {
             )
         );
 
-        // Get the full EIP-712 hash
+        // 8. Recover the signer from the hash
         bytes32 hash = _hashTypedDataV4(structHash);
-
-        // Recover signer from signature
         address signer = hash.recover(signature);
 
-        // Verify the signer is the `from` address
+        // 9. Check if the signer is the from address
         if (signer != from) revert InvalidSignature();
 
-        // Increment nonce (prevents replay)
-        nonces[from] = currentNonce + 1;
+        nonces[from] = currentNonce + 1;  // increment nonce (prevents replay)
 
         IFAsset _fxrp = fxrp();
 
-        // Check allowance
+        // 10. Check if the allowance is sufficient
         uint256 totalAmount = amount + fee;
         if (_fxrp.allowance(from, address(this)) < totalAmount) {
             revert InsufficientAllowance();
         }
 
-        // Execute the transfer: from -> to
+        // 11. Transfer the amount to the recipient
         _fxrp.safeTransferFrom(from, to, amount);
 
-        // Transfer fee to relayer
+        // 12. Transfer the fee to the relayer
         if (fee > 0) {
             _fxrp.safeTransferFrom(from, msg.sender, fee);
         }
 
-        emit PaymentExecuted(from, to, amount, fee, currentNonce);
+        emit PaymentExecuted(from, to, amount, fee, currentNonce);  // log success
     }
 
-    /**
-     * @notice Execute multiple payments in a single transaction (batch)
-     * @param requests Array of payment request data
-     */
-    function executeBatchPayments(
-        PaymentRequest[] calldata requests
-    ) external nonReentrant {
-        for (uint256 i = 0; i < requests.length; i++) {
-            _executePaymentInternal(requests[i]);
-        }
-    }
-
-    /**
-     * @notice Internal function to execute a single payment
-     */
-    function _executePaymentInternal(PaymentRequest calldata req) internal {
-        if (block.timestamp > req.deadline) revert ExpiredRequest();
-
-        uint256 currentNonce = nonces[req.from];
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                PAYMENT_REQUEST_TYPEHASH,
-                req.from,
-                req.to,
-                req.amount,
-                req.fee,
-                currentNonce,
-                req.deadline
-            )
-        );
-
-        bytes32 hash = _hashTypedDataV4(structHash);
-        address signer = hash.recover(req.signature);
-
-        if (signer != req.from) revert InvalidSignature();
-
-        nonces[req.from] = currentNonce + 1;
-
-        IFAsset _fxrp = fxrp();
-        uint256 totalAmount = req.amount + req.fee;
-        if (_fxrp.allowance(req.from, address(this)) < totalAmount) {
-            revert InsufficientAllowance();
-        }
-
-        _fxrp.safeTransferFrom(req.from, req.to, req.amount);
-
-        if (req.fee > 0) {
-            _fxrp.safeTransferFrom(req.from, msg.sender, req.fee);
-        }
-
-        emit PaymentExecuted(req.from, req.to, req.amount, req.fee, currentNonce);
-    }
-
-    // ============ View Functions ============
-
-    /**
-     * @notice Get the current nonce for an address
-     * @param account The address to query
-     * @return The current nonce
-     */
+    // 13. Views for off-chain signing / validation
     function getNonce(address account) external view returns (uint256) {
-        return nonces[account];
+        return nonces[account];  // current nonce for off-chain signing
     }
 
-    /**
-     * @notice Get the EIP-712 domain separator
-     * @return The domain separator hash
-     */
+    // Get the EIP-712 domain separator
     function getDomainSeparator() external view returns (bytes32) {
-        return _domainSeparatorV4();
+        return _domainSeparatorV4();  // EIP-712 domain separator
     }
 
-    /**
-     * @notice Compute the hash of a payment request for signing
-     * @param from Sender's address
-     * @param to Recipient's address
-     * @param amount Amount of FXRP to transfer
-     * @param fee Relayer fee
-     * @param nonce Current nonce of the sender
-     * @param deadline Expiration timestamp
-     * @return The EIP-712 typed data hash to sign
-     */
+    // Compute the hash of a payment request for signing
     function getPaymentRequestHash(
         address from,
         address to,
@@ -254,39 +155,21 @@ contract GaslessPaymentForwarder is EIP712, Ownable, ReentrancyGuard {
                 deadline
             )
         );
-        return _hashTypedDataV4(structHash);
+        return _hashTypedDataV4(structHash);  // full EIP-712 typed-data hash
     }
 
-    /**
-     * @notice Set relayer authorization status
-     * @param relayer Address of the relayer
-     * @param authorized Whether the relayer is authorized
-     */
+    // 15. Set relayer authorization status
     function setRelayerAuthorization(
         address relayer,
         bool authorized
     ) external onlyOwner {
-        authorizedRelayers[relayer] = authorized;
+        authorizedRelayers[relayer] = authorized;  // update allowlist
         emit RelayerAuthorized(relayer, authorized);
     }
 
-    /**
-     * @notice Update the default relayer fee
-     * @param _relayerFee New fee in FXRP
-     */
+    // 15. Update the default relayer fee
     function setRelayerFee(uint256 _relayerFee) external onlyOwner {
-        relayerFee = _relayerFee;
+        relayerFee = _relayerFee;  // update default fee
         emit RelayerFeeUpdated(_relayerFee);
-    }
-
-    // ============ Structs ============
-
-    struct PaymentRequest {
-        address from;
-        address to;
-        uint256 amount;
-        uint256 fee;
-        uint256 deadline;
-        bytes signature;
     }
 }
