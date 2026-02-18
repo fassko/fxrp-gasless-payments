@@ -16,7 +16,7 @@
 // 1. Import the necessary libraries
 import { ethers, Contract, Wallet, JsonRpcProvider } from "ethers";
 import { erc20Abi, recoverTypedDataAddress, type TypedDataDomain, type TypedData } from "viem";
-import express, { Request, Response } from "express";
+import express, { type Request, type Response } from "express";
 import cors from "cors";
 import "dotenv/config";
 import type { GaslessPaymentForwarder } from "../typechain-types/contracts/GaslessPaymentForwarder";
@@ -209,9 +209,7 @@ export class GaslessRelayer {
     }
 
     // Execute the payment
-    let tx: ethers.ContractTransactionResponse;
-    try {
-      tx = await this.forwarder.executePayment(
+    let tx = await this.forwarder.executePayment(
         from,
         to,
         amount,
@@ -219,17 +217,9 @@ export class GaslessRelayer {
         signature,
         { gasLimit }
       );
-    } catch (sendError) {
-      throw sendError;
-    }
-
-    // Wait for confirmation
-    let receipt: ethers.TransactionReceipt | null;
-    try {
-      receipt = await tx.wait();
-    } catch (waitError) {
-      throw waitError;
-    }
+    
+    const receipt = await tx.wait();
+    
 
     return {
       success: true,
